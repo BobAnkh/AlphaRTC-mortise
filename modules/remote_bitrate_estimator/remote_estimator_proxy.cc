@@ -148,7 +148,25 @@ void RemoteEstimatorProxy::IncomingPacket(int64_t arrival_time_ms,
   {
     RTC_LOG(LS_ERROR) << "Save data failed";
   }
-  RTC_LOG(LS_INFO) << out_data;
+
+  // RTC_LOG(LS_INFO) << out_data;
+
+  // if (network_state_estimator_ && header.extension.hasAbsoluteSendTime) {
+  //   PacketResult packet_result;
+  //   packet_result.receive_time = Timestamp::Millis(arrival_time_ms);
+  //   // Ignore reordering of packets and assume they have approximately the same
+  //   // send time.
+  //   abs_send_timestamp_ += std::max(
+  //       header.extension.GetAbsoluteSendTimeDelta(previous_abs_send_time_),
+  //       TimeDelta::Millis(0));
+  //   previous_abs_send_time_ = header.extension.absoluteSendTime;
+  //   packet_result.sent_packet.send_time = abs_send_timestamp_;
+  //   // TODO(webrtc:10742): Take IP header and transport overhead into account.
+  //   packet_result.sent_packet.size =
+  //       DataSize::Bytes(header.headerLength + payload_size);
+  //   packet_result.sent_packet.sequence_number = seq;
+  //   network_state_estimator_->OnReceivedPacket(packet_result);
+  // }
 }
 
 bool RemoteEstimatorProxy::LatestEstimate(std::vector<unsigned int>* ssrcs,
