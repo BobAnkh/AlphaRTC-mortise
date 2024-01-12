@@ -218,6 +218,7 @@ void RemoteBitrateEstimatorSingleStream::UpdateEstimate(int64_t now_ms) {
 void RemoteBitrateEstimatorSingleStream::OnRttUpdate(int64_t avg_rtt_ms,
                                                      int64_t max_rtt_ms) {
   rtc::CritScope cs(&crit_sect_);
+  RTC_LOG(LS_WARNING) << "singlestream RTT " << avg_rtt_ms << " ms";
   GetRemoteRate()->SetRtt(TimeDelta::Millis(avg_rtt_ms));
 }
 

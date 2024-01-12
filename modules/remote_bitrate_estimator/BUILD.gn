@@ -13,6 +13,8 @@ rtc_library("remote_bitrate_estimator") {
   sources = [
     "aimd_rate_control.cc",
     "aimd_rate_control.h",
+    "tradeoff_control.h",
+    "tradeoff_control.cc",
     "bwe_defines.cc",
     "include/bwe_defines.h",
     "include/remote_bitrate_estimator.h",

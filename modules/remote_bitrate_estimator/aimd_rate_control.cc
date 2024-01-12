@@ -33,6 +33,12 @@ namespace {
 
 constexpr TimeDelta kDefaultRtt = TimeDelta::Millis(200);
 constexpr double kDefaultBackoffFactor = 0.85;
+constexpr double kDefaultPackets = 1; 
+constexpr double kDefaultAlpha = 1.08;
+constexpr bool kUseTradeoff = true;
+// constexpr double kDefaultBackoffFactor = 0.95;
+// constexpr double kDefaultPackets = 40; 
+// constexpr double kDefaultAlpha = 1.8;
 
 constexpr char kBweBackOffFactorExperiment[] = "WebRTC-BweBackOffFactor";
 
@@ -79,6 +85,7 @@ AimdRateControl::AimdRateControl(const WebRtcKeyValueConfig* key_value_config,
       latest_estimated_throughput_(current_bitrate_),
       link_capacity_(),
       rate_control_state_(kRcHold),
+      tradeoff_control_(),
       time_last_bitrate_change_(Timestamp::MinusInfinity()),
       time_last_bitrate_decrease_(Timestamp::MinusInfinity()),
       time_first_throughput_estimate_(Timestamp::MinusInfinity()),
@@ -86,6 +93,8 @@ AimdRateControl::AimdRateControl(const WebRtcKeyValueConfig* key_value_config,
       beta_(IsEnabled(*key_value_config, kBweBackOffFactorExperiment)
                 ? ReadBackoffFactor(*key_value_config)
                 : kDefaultBackoffFactor),
+      alpha_(kDefaultAlpha),
+      additive_incr_coef(kDefaultPackets),
       in_alr_(false),
       rtt_(kDefaultRtt),
       send_side_(send_side),
@@ -178,6 +187,11 @@ DataRate AimdRateControl::LatestEstimate() const {
 
 void AimdRateControl::SetRtt(TimeDelta rtt) {
   rtt_ = rtt;
+  RTC_LOG(LS_WARNING) << "RTT " << rtt_.ms() << " ms";
+}
+
+void AimdRateControl::UpdateNetworkEstimate(TimeDelta rtt, DataRate tput) {
+  tradeoff_control_.UpdateTradeOffEstimate(rtt, tput);
 }
 
 DataRate AimdRateControl::Update(const RateControlInput* input,
@@ -200,6 +214,7 @@ DataRate AimdRateControl::Update(const RateControlInput* input,
       bitrate_is_initialized_ = true;
     }
   }
+
 
   ChangeBitrate(*input, at_time);
   return current_bitrate_;
@@ -236,8 +251,9 @@ double AimdRateControl::GetNearMaxIncreaseRateBpsPerSecond() const {
   TimeDelta response_time = rtt_ + TimeDelta::Millis(100);
   if (in_experiment_)
     response_time = response_time * 2;
+  // approximately: cwnd += 1对比之下copa cwnd += 20 in 1 second
   double increase_rate_bps_per_second =
-      (avg_packet_size / response_time).bps<double>();
+      (additive_incr_coef * avg_packet_size / response_time).bps<double>();
   double kMinIncreaseRateBpsPerSecond = 4000;
   return std::max(kMinIncreaseRateBpsPerSecond, increase_rate_bps_per_second);
 }
@@ -259,6 +275,14 @@ TimeDelta AimdRateControl::GetExpectedBandwidthPeriod() const {
 void AimdRateControl::ChangeBitrate(const RateControlInput& input,
                                     Timestamp at_time) {
   absl::optional<DataRate> new_bitrate;
+
+  tradeoff_control_.GetQoeLambda();
+  bool updated = tradeoff_control_.UpdateTradeoff(at_time);
+  if (updated && kUseTradeoff) {
+    tradeoff_control_.AdjustProbingParameters(&beta_, &alpha_, &additive_incr_coef);
+    RTC_LOG(LS_WARNING) << "new param " << "beta " << beta_ << " alpha " << alpha_ << " additive_incr_coef " << additive_incr_coef;
+  }
+
   DataRate estimated_throughput =
       input.estimated_throughput.value_or(latest_estimated_throughput_);
   if (input.estimated_throughput)
@@ -302,7 +326,9 @@ void AimdRateControl::ChangeBitrate(const RateControlInput& input,
           // increase.
           DataRate additive_increase =
               AdditiveRateIncrease(at_time, time_last_bitrate_change_);
+          
           increased_bitrate = current_bitrate_ + additive_increase;
+          RTC_LOG(LS_WARNING) << "At "<< at_time.ms() % 100000 << "current "<< current_bitrate_.bps() << " bps additive increase " << additive_increase.bps() << " bps";
         } else {
           // If we don't have an estimate of the link capacity, use faster ramp
           // up to discover the capacity.
@@ -330,6 +356,7 @@ void AimdRateControl::ChangeBitrate(const RateControlInput& input,
           decreased_bitrate = beta_ * link_capacity_.estimate();
         }
       }
+      // RTC_LOG(LS_WARNING) << "At "<< at_time.ms() % 100000 << "estimated throughput "<< estimated_throughput.bps() << " capacity " << link_capacity_.estimate().bps() << " bps";
       if (estimate_bounded_backoff_ && network_estimate_) {
         decreased_bitrate = std::max(
             decreased_bitrate, network_estimate_->link_capacity_lower * beta_);
@@ -347,6 +374,7 @@ void AimdRateControl::ChangeBitrate(const RateControlInput& input,
           last_decrease_ = current_bitrate_ - *new_bitrate;
         }
       }
+      // RTC_LOG(LS_WARNING) << "At "<< at_time.ms() % 100000 <<"current "<< current_bitrate_.bps() << " decrease " << last_decrease_->bps() << " bps"; 
       if (estimated_throughput < link_capacity_.LowerBound()) {
         // The current throughput is far from the estimated link capacity. Clear
         // the estimate to allow an immediate update in OnOveruseDetected.
@@ -365,7 +393,10 @@ void AimdRateControl::ChangeBitrate(const RateControlInput& input,
       assert(false);
   }
 
+
   current_bitrate_ = ClampBitrate(new_bitrate.value_or(current_bitrate_));
+  tradeoff_control_.UpdateTargetBitrate(at_time, current_bitrate_);
+  RTC_LOG(LS_WARNING) << "At "<< at_time.ms() % 100000 <<"current "<< current_bitrate_.bps() ; 
 }
 
 DataRate AimdRateControl::ClampBitrate(DataRate new_bitrate) const {
@@ -374,6 +405,7 @@ DataRate AimdRateControl::ClampBitrate(DataRate new_bitrate) const {
     new_bitrate = std::min(new_bitrate, upper_bound);
   }
   new_bitrate = std::max(new_bitrate, min_configured_bitrate_);
+  // return DataRate::BitsPerSec(2500000);
   return new_bitrate;
 }
 
@@ -381,13 +413,14 @@ DataRate AimdRateControl::MultiplicativeRateIncrease(
     Timestamp at_time,
     Timestamp last_time,
     DataRate current_bitrate) const {
-  double alpha = 1.08;
+  double alpha = alpha_;
   if (last_time.IsFinite()) {
     auto time_since_last_update = at_time - last_time;
     alpha = pow(alpha, std::min(time_since_last_update.seconds<double>(), 1.0));
   }
   DataRate multiplicative_increase =
       std::max(current_bitrate * (alpha - 1.0), DataRate::BitsPerSec(1000));
+  // RTC_LOG(LS_WARNING) <<"At "<< at_time.ms() % 100000   <<" current " << current_bitrate.bps() <<" multiplicative increase " << multiplicative_increase.bps() << " bps alpha " << alpha;
   return multiplicative_increase;
 }
 
@@ -420,5 +453,6 @@ void AimdRateControl::ChangeState(const RateControlInput& input,
       assert(false);
   }
 }
+
 
 }  // namespace webrtc

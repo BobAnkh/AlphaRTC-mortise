@@ -20,6 +20,7 @@
 #include "api/units/timestamp.h"
 #include "modules/congestion_controller/goog_cc/link_capacity_estimator.h"
 #include "modules/remote_bitrate_estimator/include/bwe_defines.h"
+#include "modules/remote_bitrate_estimator/tradeoff_control.h"
 #include "rtc_base/experiments/field_trial_parser.h"
 
 namespace webrtc {
@@ -28,6 +29,8 @@ namespace webrtc {
 // over-uses are detected. When we think the available bandwidth has changes or
 // is unknown, we will switch to a "slow-start mode" where we increase
 // multiplicatively.
+
+
 class AimdRateControl {
  public:
   explicit AimdRateControl(const WebRtcKeyValueConfig* key_value_config);
@@ -63,6 +66,7 @@ class AimdRateControl {
   double GetNearMaxIncreaseRateBpsPerSecond() const;
   // Returns the expected time between overuse signals (assuming steady state).
   TimeDelta GetExpectedBandwidthPeriod() const;
+  void UpdateNetworkEstimate(TimeDelta rtt, DataRate tput);
 
  private:
   friend class GoogCcStatePrinter;
@@ -82,6 +86,8 @@ class AimdRateControl {
   DataRate AdditiveRateIncrease(Timestamp at_time, Timestamp last_time) const;
   void UpdateChangePeriod(Timestamp at_time);
   void ChangeState(const RateControlInput& input, Timestamp at_time);
+  
+
 
   DataRate min_configured_bitrate_;
   DataRate max_configured_bitrate_;
@@ -90,13 +96,17 @@ class AimdRateControl {
   LinkCapacityEstimator link_capacity_;
   absl::optional<NetworkStateEstimate> network_estimate_;
   RateControlState rate_control_state_;
+  TradeOffControl tradeoff_control_;
   Timestamp time_last_bitrate_change_;
   Timestamp time_last_bitrate_decrease_;
   Timestamp time_first_throughput_estimate_;
   bool bitrate_is_initialized_;
   double beta_;
+  double alpha_;
+  double additive_incr_coef;
   bool in_alr_;
   TimeDelta rtt_;
+  
   const bool send_side_;
   const bool in_experiment_;
   // Allow the delay based estimate to only increase as long as application
@@ -111,6 +121,7 @@ class AimdRateControl {
   absl::optional<DataRate> last_decrease_;
   FieldTrialOptional<TimeDelta> initial_backoff_interval_;
   FieldTrialFlag link_capacity_fix_;
+
 };
 }  // namespace webrtc
 

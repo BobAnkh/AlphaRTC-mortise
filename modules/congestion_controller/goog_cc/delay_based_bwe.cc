@@ -143,7 +143,7 @@ DelayBasedBwe::Result DelayBasedBwe::IncomingPacketFeedbackVector(
     RTC_LOG(LS_WARNING) << "Very late feedback received.";
     return DelayBasedBwe::Result();
   }
-
+  // RTC_LOG(LS_WARNING) << "feedback At "<< msg.feedback_time.ms() % 100000 ; 
   if (!uma_recorded_) {
     RTC_HISTOGRAM_ENUMERATION(kBweTypeHistogram,
                               BweNames::kSendSideTransportSeqNum,
@@ -153,6 +153,25 @@ DelayBasedBwe::Result DelayBasedBwe::IncomingPacketFeedbackVector(
   bool delayed_feedback = true;
   bool recovered_from_overuse = false;
   BandwidthUsage prev_detector_state = active_delay_detector_->State();
+  
+  // update network estimate for tradeoff controller
+  TimeDelta max_feedback_rtt = TimeDelta::MinusInfinity();
+  Timestamp max_recv_time = Timestamp::MinusInfinity();
+
+  for (const auto& feedback : packet_feedback_vector)
+    max_recv_time = std::max(max_recv_time, feedback.receive_time);
+
+  for (const auto& feedback : packet_feedback_vector) {
+    TimeDelta feedback_rtt =
+        msg.feedback_time - feedback.sent_packet.send_time;
+    // TimeDelta min_pending_time = feedback.receive_time - max_recv_time;
+    // TimeDelta propagation_rtt = feedback_rtt - min_pending_time;
+    max_feedback_rtt = std::max(max_feedback_rtt, feedback_rtt);
+    // min_propagation_rtt = std::min(min_propagation_rtt, propagation_rtt);
+  }
+  if (acked_bitrate)
+    rate_control_.UpdateNetworkEstimate(max_feedback_rtt, *acked_bitrate);
+
   for (const auto& packet_feedback : packet_feedback_vector) {
     delayed_feedback = false;
     IncomingPacketFeedback(packet_feedback, msg.feedback_time);
@@ -253,13 +272,17 @@ void DelayBasedBwe::IncomingPacketFeedback(const PacketResult& packet_feedback,
                                     packet_feedback.sent_packet.send_time.ms(),
                                     packet_feedback.receive_time.ms(),
                                     packet_size.bytes(), calculated_deltas);
+  // RTC_LOG(LS_WARNING) << "DBE RTT " << packet_feedback.receive_time.ms() - packet_feedback.sent_packet.send_time.ms() << " " << packet_feedback.receive_time.ms();
+  // TODO: report to python
+  
+
 }
 
-DataRate DelayBasedBwe::TriggerOveruse(Timestamp at_time,
-                                       absl::optional<DataRate> link_capacity) {
-  RateControlInput input(BandwidthUsage::kBwOverusing, link_capacity);
-  return rate_control_.Update(&input, at_time);
-}
+// DataRate DelayBasedBwe::TriggerOveruse(Timestamp at_time,
+//                                        absl::optional<DataRate> link_capacity) {
+//   RateControlInput input(BandwidthUsage::kBwOverusing, link_capacity);
+//   return rate_control_.Update(&input, at_time);
+// }
 
 DelayBasedBwe::Result DelayBasedBwe::MaybeUpdateEstimate(
     absl::optional<DataRate> acked_bitrate,
@@ -329,10 +352,12 @@ bool DelayBasedBwe::UpdateEstimate(Timestamp at_time,
                                    DataRate* target_rate) {
   const RateControlInput input(active_delay_detector_->State(), acked_bitrate);
   *target_rate = rate_control_.Update(&input, at_time);
+  //  RTC_LOG(LS_WARNING) << "At "<< at_time.ms() % 100000 << "UpdateEstimate ";
   return rate_control_.ValidEstimate();
 }
 
 void DelayBasedBwe::OnRttUpdate(TimeDelta avg_rtt) {
+  // RTC_LOG(LS_WARNING) << "OnRttUpdate RTT " << avg_rtt.ms() << " ms";
   rate_control_.SetRtt(avg_rtt);
 }
 
