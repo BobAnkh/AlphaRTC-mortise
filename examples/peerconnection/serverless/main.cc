@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
     exit(EINVAL);
   }
 
-  rtc::LogMessage::LogToDebug(rtc::LS_WARNING);
+  rtc::LogMessage::LogToDebug(rtc::LS_INFO);
 
   auto config = webrtc::GetAlphaCCConfig();
   std::unique_ptr<FileLogSink> sink;
