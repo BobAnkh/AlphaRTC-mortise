@@ -848,19 +848,20 @@ void VideoStreamEncoder::OnFrame(const VideoFrame& video_frame) {
   incoming_frame.set_timestamp(
       kMsToRtpTimestamp * static_cast<uint32_t>(incoming_frame.ntp_time_ms()));
 
-  if (incoming_frame.ntp_time_ms() <= last_captured_timestamp_) {
-    // We don't allow the same capture time for two frames, drop this one.
-    RTC_LOG(LS_WARNING) << "Same/old NTP timestamp ("
-                        << incoming_frame.ntp_time_ms()
-                        << " <= " << last_captured_timestamp_
-                        << ") for incoming frame. Dropping.";
-    encoder_queue_.PostTask([this, incoming_frame]() {
-      RTC_DCHECK_RUN_ON(&encoder_queue_);
-      accumulated_update_rect_.Union(incoming_frame.update_rect());
-      accumulated_update_rect_is_valid_ &= incoming_frame.has_update_rect();
-    });
-    return;
-  }
+  // HACK: For easier frame counting, we don't drop frames in this.
+  // if (incoming_frame.ntp_time_ms() <= last_captured_timestamp_) {
+  //   // We don't allow the same capture time for two frames, drop this one.
+  //   RTC_LOG(LS_WARNING) << "Same/old NTP timestamp ("
+  //                       << incoming_frame.ntp_time_ms()
+  //                       << " <= " << last_captured_timestamp_
+  //                       << ") for incoming frame. Dropping.";
+  //   encoder_queue_.PostTask([this, incoming_frame]() {
+  //     RTC_DCHECK_RUN_ON(&encoder_queue_);
+  //     accumulated_update_rect_.Union(incoming_frame.update_rect());
+  //     accumulated_update_rect_is_valid_ &= incoming_frame.has_update_rect();
+  //   });
+  //   return;
+  // }
 
   bool log_stats = false;
   if (current_time_ms - last_frame_log_ms_ > kFrameLogIntervalMs) {
