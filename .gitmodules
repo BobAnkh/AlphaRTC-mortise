@@ -1,0 +1,3 @@
+[submodule "HRCC"]
+	path = HRCC
+	url = https://github.com/thegreatwb/HRCC
