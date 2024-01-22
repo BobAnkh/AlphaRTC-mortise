@@ -159,10 +159,14 @@ def get_video_score(args):
     # ffmpeg -v error -i $source -vf "select='not($frame_numbers)',setpts=N/FRAME_RATE/TB" -f yuv4mpegpipe -pix_fmt yuv420p source_dropped1.yuv
     print("Dropping {} frames from sender log...".format(
         frame_numbers.count('eq')))
-    subprocess.check_call(
-        'ffmpeg -v error -i {} -vf "select=\'not({})\',setpts=N/FRAME_RATE/TB" -f yuv4mpegpipe -pix_fmt yuv420p ./source_dropped1.yuv'.format(
-            args.sender_video, frame_numbers),
-        shell=True)
+    if frame_numbers.count('eq') > 0:
+        subprocess.check_call(
+            'ffmpeg -v error -i {} -vf "select=\'not({})\',setpts=N/FRAME_RATE/TB" -f yuv4mpegpipe -pix_fmt yuv420p ./source_dropped1.yuv'.format(
+                args.sender_video, frame_numbers),
+            shell=True)
+    else:
+        subprocess.check_call('cp {} ./source_dropped1.yuv'.format(
+            args.sender_video), shell=True)
 
     # Drop frames from receiver log
     frame_numbers = subprocess.check_output('cat ' + args.receiver_log +
@@ -170,10 +174,14 @@ def get_video_score(args):
 
     print("Dropping {} frames from receiver log...".format(
         frame_numbers.count('eq')))
-    subprocess.check_call(
-        'ffmpeg -v error -i ./source_dropped1.yuv -vf "select=\'not({})\',setpts=N/FRAME_RATE/TB" -f yuv4mpegpipe -pix_fmt yuv420p ./source_dropped2.yuv'.format(
-            frame_numbers),
-        shell=True)
+    if frame_numbers.count('eq') > 0:
+        subprocess.check_call(
+            'ffmpeg -v error -i ./source_dropped1.yuv -vf "select=\'not({})\',setpts=N/FRAME_RATE/TB" -f yuv4mpegpipe -pix_fmt yuv420p ./source_dropped2.yuv'.format(
+                frame_numbers),
+            shell=True)
+    else:
+        subprocess.check_call('cp ./source_dropped1.yuv ./source_dropped2.yuv',
+                              shell=True)
 
     # ./vmaf -r ./source_dropped2.yuv -d $target -o $vmaf_output --json --threads $threads
     subprocess.check_call(
