@@ -56,6 +56,8 @@ int32_t VideoRenderFrames::AddFrame(VideoFrame&& new_frame) {
   if (!incoming_frames_.empty() &&
       new_frame.render_time_ms() + kOldRenderTimestampMS < time_now) {
     RTC_LOG(LS_WARNING) << "Too old frame, timestamp=" << new_frame.timestamp();
+    RTC_LOG(LS_WARNING) << "Framedropped: frames number "
+                        << frames_rendered_ + frames_dropped_;
     ++frames_dropped_;
     return -1;
   }
@@ -63,6 +65,8 @@ int32_t VideoRenderFrames::AddFrame(VideoFrame&& new_frame) {
   if (new_frame.render_time_ms() > time_now + kFutureRenderTimestampMS) {
     RTC_LOG(LS_WARNING) << "Frame too long into the future, timestamp="
                         << new_frame.timestamp();
+    RTC_LOG(LS_WARNING) << "Framedropped: frames number "
+                        << frames_rendered_ + frames_dropped_;
     ++frames_dropped_;
     return -1;
   }
@@ -71,6 +75,8 @@ int32_t VideoRenderFrames::AddFrame(VideoFrame&& new_frame) {
     RTC_LOG(LS_WARNING) << "Frame scheduled out of order, render_time="
                         << new_frame.render_time_ms()
                         << ", latest=" << last_render_time_ms_;
+    RTC_LOG(LS_WARNING) << "Framedropped: frames number "
+                        << frames_rendered_ + frames_dropped_;
     // For more details, see bug:
     // https://bugs.chromium.org/p/webrtc/issues/detail?id=7253
     ++frames_dropped_;
@@ -92,10 +98,17 @@ absl::optional<VideoFrame> VideoRenderFrames::FrameToRender() {
   // Get the newest frame that can be released for rendering.
   while (!incoming_frames_.empty() && TimeToNextFrameRelease() <= 0) {
     if (render_frame) {
+      RTC_LOG(LS_WARNING) << "Frame released too late, timestamp="
+                          << render_frame->timestamp();
+      RTC_LOG(LS_WARNING) << "Framedropped: frames number "
+                          << frames_rendered_ + frames_dropped_;
       ++frames_dropped_;
     }
     render_frame = std::move(incoming_frames_.front());
     incoming_frames_.pop_front();
+  }
+  if (render_frame) {
+    ++frames_rendered_;
   }
   return render_frame;
 }

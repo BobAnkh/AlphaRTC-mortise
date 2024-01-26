@@ -234,7 +234,7 @@ Notes:
 }
 ```
 
-### Run Experiment
+### Run GCC Experiment
 
 Run receiver first, then run sender.
 
@@ -251,6 +251,44 @@ After 60 seconds, the program will exit automatically.
 `receiver_warn.log` and `sender_warn.log` are the warning log files.
 
 YUV video could be very large. If you want to play it, you can use `ffmpeg` to convert it to mp4 format like this: `ffmpeg -i outvideo.yuv outvideo.mp4`. Keep the YUV file if you want to do the evaluation.
+
+### Run HRCC Experiment
+
+[A Hybrid Receiver-side Congestion Control Scheme for Web Real-time Communication](https://dl.acm.org/doi/abs/10.1145/3458305.3479970).
+
+[HRCC Source Code](https://github.com/thegreatwb/HRCC)
+
+We conduct HRCC experiments on the `hrcc_baseline` branch.
+
+Build:
+
+``` bash
+git checkout hrcc_baseline
+git submodule init  
+git submodule update
+# after this, related code will be in `HRCC/` directory
+
+gn gen out/Default --args='is_debug=false'
+
+# compiling steps refer to `make docker-peerconnection_serverless`
+ninja -C out/Default peerconnection_serverless
+cp out/Default/peerconnection_serverless HRCC/peerconnection_serverless.origin
+cp examples/peerconnection/serverless/peerconnection_serverless HRCC/
+cp modules/third_party/cmdinfer/*.py HRCC/
+
+export LD_LIBRARY_PATH=`pwd`/modules/third_party/onnxinfer/lib:$LD_LIBRARY_PATH
+cd HRCC/
+```
+
+HRCC need numpy and torch. You should install them before running HRCC.
+
+Make shure you have proper `LD_LIBRARY_PATH` before running HRCC. You can set it like above.
+
+Then you can run it in `HRCC/` directory similar to GCC experiment. The configuration file can also use `receiver_gcc.json` and `sender_gcc.json`.
+
+Receiver: `rm ./receiver.log; ./peerconnection_serverless receiver_gcc.json 2>receiver_warn.log 1>/dev/null`
+
+Sender: `rm ./sender.log; ./peerconnection_serverless sender_gcc.json 2>sender_warn.log 1>/dev/null`
 
 ## Evaluate
 
@@ -299,3 +337,9 @@ Example:
 ``` bash
 ./evaluate.py -r receiver.log -s sender.log --vmaf ./vmaf --sender_video ./1080p.yuv --receiver_video ./unlimited-60s.yuv
 ```
+
+### Notes
+
+You should set correct `--max_delay` and `--ground_recv_rate` according to your situation.
+
+You had better check the vmaf json output to make sure the vmaf score is correct.

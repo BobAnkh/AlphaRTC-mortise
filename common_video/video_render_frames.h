@@ -48,6 +48,7 @@ class VideoRenderFrames {
 
   int64_t last_render_time_ms_ = 0;
   size_t frames_dropped_ = 0;
+  size_t frames_rendered_ = 0;
 };
 
 }  // namespace webrtc
